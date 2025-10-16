@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import axios from 'axios';
+import { testBackend } from '../utils/api';
 
 const AuthContext = createContext();
 
@@ -14,56 +14,79 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [backendConnected, setBackendConnected] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      // Fetch user profile
-      fetchUserProfile();
-    } else {
-      setLoading(false);
-    }
+    checkAuthStatus();
   }, []);
 
-  const fetchUserProfile = async () => {
+  const checkAuthStatus = async () => {
     try {
-      const response = await axios.get('/api/users/profile');
-      setUser(response.data);
+      // First test backend connection
+      await testBackend();
+      setBackendConnected(true);
+      console.log('✅ Backend connected');
+
+      // Then check if user is logged in
+      const token = localStorage.getItem('token');
+      if (token) {
+        const { userAPI } = await import('../utils/api.js');
+        const response = await userAPI.getProfile();
+        setUser(response.data);
+        console.log('✅ User profile loaded');
+      } else {
+        console.log('ℹ️ No token found, user not logged in');
+      }
     } catch (error) {
+      console.error('❌ Auth check failed:', error);
+      setBackendConnected(false);
+      // Clear invalid token
       localStorage.removeItem('token');
-      delete axios.defaults.headers.common['Authorization'];
     } finally {
       setLoading(false);
+      console.log('✅ Auth loading complete');
     }
   };
 
   const login = async (username, password) => {
-    const response = await axios.post('/api/auth/login', { username, password });
-    const { token, ...userData } = response.data;
-    
-    localStorage.setItem('token', token);
-    axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    setUser(userData);
-    
-    return userData;
+    try {
+      const { authAPI } = await import('../utils/api.js');
+      const response = await authAPI.login({ username, password });
+      const { token, ...userData } = response.data;
+      
+      localStorage.setItem('token', token);
+      setUser(userData);
+      console.log('✅ Login successful');
+      
+      return userData;
+    } catch (error) {
+      console.error('❌ Login failed:', error);
+      throw error;
+    }
   };
 
   const signup = async (email, username, password) => {
-    const response = await axios.post('/api/auth/signup', { email, username, password });
-    const { token, ...userData } = response.data;
-    
-    localStorage.setItem('token', token);
-    axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    setUser(userData);
-    
-    return userData;
+    try {
+      const { authAPI } = await import('../utils/api.js');
+      const response = await authAPI.signup({ email, username, password });
+      const { token, ...userData } = response.data;
+      
+      localStorage.removeItem('token');
+      localStorage.setItem('token', token);
+      setUser(userData);
+      console.log('✅ Signup successful');
+      
+      return userData;
+    } catch (error) {
+      console.error('❌ Signup failed:', error);
+      throw error;
+    }
   };
 
   const logout = () => {
     localStorage.removeItem('token');
-    delete axios.defaults.headers.common['Authorization'];
     setUser(null);
+    console.log('✅ Logout successful');
   };
 
   const value = {
@@ -71,7 +94,8 @@ export const AuthProvider = ({ children }) => {
     login,
     signup,
     logout,
-    loading
+    loading,
+    backendConnected
   };
 
   return (
