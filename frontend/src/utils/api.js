@@ -60,6 +60,7 @@ export const mealAPI = {
   addMeal: (data) => API.post('/meals', data),
   getMeals: (date) => API.get(`/meals?date=${date}`),
   getWeeklyData: () => API.get('/meals/weekly'),
+  getDebug: () => API.get('/meals/debug'), // Add this line
 };
 
 export const predictorAPI = {
