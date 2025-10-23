@@ -17,7 +17,7 @@ const Dashboard = () => {
   });
   const [dailyGoal, setDailyGoal] = useState(2000);
 
-  // === Fetch Today's Data - This updates both progress bar and graph ===
+  // === Fetch Today's Data ===
   const fetchTodayData = useCallback(async () => {
     try {
       const today = new Date().toISOString().split('T')[0];
@@ -56,10 +56,12 @@ const Dashboard = () => {
     }
   }, []);
 
-  // === Fetch Weekly Data ===
+  // === Fetch Weekly Data - FIXED ===
   const fetchWeeklyData = useCallback(async () => {
     try {
       const response = await mealAPI.getWeeklyData();
+      console.log('Weekly API Response:', response.data); // Debug log
+      
       const processedData = response.data
         .filter(item => item._id && item._id.date)
         .map(item => {
@@ -92,6 +94,7 @@ const Dashboard = () => {
         })
         .sort((a, b) => new Date(a.date) - new Date(b.date));
       
+      console.log('Processed Weekly Data:', processedData); // Debug log
       setWeeklyData(processedData);
     } catch (error) {
       console.error('Error fetching weekly data:', error);
@@ -132,50 +135,51 @@ const Dashboard = () => {
     return Math.max(0, dailyGoal - todayData.totalCalories);
   };
 
-  // === Create graph data that shows all week days correctly ===
-// === Create graph data that shows 7 days including today ===
-const getGraphData = () => {
-  const today = new Date();
-  const weekDates = [];
+  // === Create graph data that shows 7 days including today ===
+  const getGraphData = () => {
+    const today = new Date();
+    const weekDates = [];
 
-  // Generate last 7 days
-  for (let i = 6; i >= 0; i--) {
-    const dateObj = new Date(today);
-    dateObj.setDate(today.getDate() - i);
-    weekDates.push({
-      date: dateObj,
-      day: dateObj.toLocaleDateString('en-US', { weekday: 'short' })
+    // Generate last 7 days
+    for (let i = 6; i >= 0; i--) {
+      const dateObj = new Date(today);
+      dateObj.setDate(today.getDate() - i);
+      weekDates.push({
+        date: dateObj,
+        day: dateObj.toLocaleDateString('en-US', { weekday: 'short' })
+      });
+    }
+
+    // Map weeklyData to a dictionary for quick lookup
+    const dataMap = {};
+    weeklyData.forEach(item => {
+      const key = new Date(item.date).toDateString();
+      dataMap[key] = item.totalCalories || 0;
     });
-  }
 
-  // Map weeklyData to a dictionary for quick lookup
-  const dataMap = {};
-  weeklyData.forEach(item => {
-    const key = new Date(item.date).toDateString();
-    dataMap[key] = item.totalCalories || 0;
-  });
+    // Build graph data array for 7 days
+    const graphArray = weekDates.map(d => {
+      const key = d.date.toDateString();
+      const calories = key === today.toDateString() ? todayData.totalCalories : (dataMap[key] || 0);
+      return {
+        day: key === today.toDateString() ? 'Today' : d.day,
+        totalCalories: calories,
+        date: d.date
+      };
+    });
 
-  // Build graph data array for 7 days
-  const graphArray = weekDates.map(d => {
-    const key = d.date.toDateString();
-    const calories = key === today.toDateString() ? todayData.totalCalories : (dataMap[key] || 0);
-    return {
-      day: key === today.toDateString() ? 'Today' : d.day,
-      totalCalories: calories,
-      date: d.date
-    };
-  });
+    return graphArray;
+  };
 
-  return graphArray;
-};
-
-
-
-  // === Weekly Stats (based on actual weekly data) ===
+  // === FIXED Weekly Stats (calculate from graphData instead of weeklyData) ===
   const calculateWeeklyStats = () => {
-    const totalCalories = weeklyData.reduce((sum, day) => sum + (day.totalCalories || 0), 0);
-    const avgDailyCalories = weeklyData.length > 0 ? Math.round(totalCalories / weeklyData.length) : 0;
-    const daysTracked = weeklyData.filter(day => day.totalCalories > 0).length;
+    const graphData = getGraphData();
+    
+    // Calculate from the actual graph data that includes today's real-time data
+    const totalCalories = graphData.reduce((sum, day) => sum + (day.totalCalories || 0), 0);
+    const avgDailyCalories = graphData.length > 0 ? Math.round(totalCalories / graphData.length) : 0;
+    const daysTracked = graphData.filter(day => day.totalCalories > 0).length;
+    
     return { totalCalories, avgDailyCalories, daysTracked };
   };
 
@@ -392,7 +396,7 @@ const getGraphData = () => {
           </div>
         </div>
 
-        {/* === 📊 Updated Bar Chart that shows real-time data === */}
+        {/* === 📊 Weekly Calorie Bar Chart === */}
         <div className="card" style={{ padding: '1.5rem' }}>
           <h3>Weekly Calorie Intake</h3>
           {graphData.length > 0 ? (
@@ -440,8 +444,33 @@ const getGraphData = () => {
           )}
         </div>
 
-        {/* Rest of your components remain the same */}
-        {/* ... */}
+        
+        {/* === Today's Meals Summary === */}
+        {todayData.meals.length > 0 && (
+          <div className="card" style={{ marginTop: '2rem' }}>
+            <h3>Today's Meals</h3>
+            <div style={{ marginTop: '1rem' }}>
+              {todayData.meals.map(meal => (
+                <div key={meal._id} style={{ 
+                  padding: '10px', 
+                  borderBottom: '1px solid #eee',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}>
+                  <div>
+                    <strong>{meal.foodName}</strong>
+                    <div style={{ fontSize: '0.9rem', color: '#666' }}>
+                      {meal.mealType} • {meal.quantity}
+                      {meal.protein && ` • P:${meal.protein}g C:${meal.carbs}g F:${meal.fat}g`}
+                    </div>
+                  </div>
+                  <div style={{ fontWeight: 'bold' }}>{meal.calories} cal</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
